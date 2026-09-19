@@ -53,33 +53,17 @@ async function fetchWithTimeout(url, options = {}) {
 }
 
 async function generateWithHuggingFace({ prompt, width, height, seed }) {
-  const url = `https://router.huggingface.co/hf-inference/models/${HF_MODEL}`;
-  const r = await fetchWithTimeout(url, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${HF_TOKEN}`,
-      "Content-Type": "application/json",
-      Accept: "image/png",
-    },
-    body: JSON.stringify({
-      inputs: prompt,
-      parameters: { width, height, seed },
-    }),
+  // A biblioteca oficial escolhe sozinha o provedor que atende o modelo.
+  const { InferenceClient } = await import("@huggingface/inference");
+  const client = new InferenceClient(HF_TOKEN);
+  const blob = await client.textToImage({
+    provider: "auto",
+    model: HF_MODEL,
+    inputs: prompt,
+    parameters: { width, height, seed },
   });
-
-  if (!r.ok) {
-    let detail = "";
-    try {
-      const j = await r.json();
-      detail = j.error || JSON.stringify(j);
-    } catch (_) {}
-    const err = new Error(detail || `Hugging Face respondeu ${r.status}`);
-    err.status = r.status;
-    throw err;
-  }
-  const type = r.headers.get("content-type") || "image/png";
-  const buf = Buffer.from(await r.arrayBuffer());
-  return `data:${type};base64,${buf.toString("base64")}`;
+  const buf = Buffer.from(await blob.arrayBuffer());
+  return `data:${blob.type || "image/png"};base64,${buf.toString("base64")}`;
 }
 
 async function generateWithPollinations({ prompt, width, height, seed }) {
@@ -140,7 +124,7 @@ app.post("/api/generate", rateLimit, async (req, res) => {
         .status(429)
         .json({ error: "A cota gratuita do serviço acabou por agora. Tente mais tarde." });
     }
-    res.status(502).json({ error: "Não foi possível gerar a imagem agora." });
+    res.status(502).json({ error: "Não foi possível gerar a imagem agora.", detail: e.message });
   }
 });
 

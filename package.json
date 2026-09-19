@@ -10,6 +10,7 @@
     "node": ">=18"
   },
   "dependencies": {
+    "@huggingface/inference": "latest",
     "express": "^4.19.2"
   }
 }

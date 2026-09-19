@@ -120,7 +120,7 @@
         body: JSON.stringify({ prompt, width, height, seed }),
       });
       const data = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(data.error || "Não foi possível gerar a imagem.");
+      if (!r.ok) throw new Error((data.error || "Não foi possível gerar a imagem.") + (data.detail ? " (" + data.detail + ")" : ""));
 
       showImage(data.image, prompt);
       const list = [{ prompt, image: data.image }, ...loadHistory()];
