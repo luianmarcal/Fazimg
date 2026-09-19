@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Gerador de imagens com IA</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main class="wrap">
+    <header class="top">
+      <h1>Descreva. A imagem sai.</h1>
+      <p class="lead">Escreva o que você quer ver e a IA desenha. Descrições em inglês costumam dar resultados melhores.</p>
+    </header>
+
+    <div class="grid">
+      <section class="panel" aria-label="Criar imagem">
+        <label class="field" for="prompt">Descrição</label>
+        <textarea id="prompt" maxlength="500" rows="6" placeholder="Um farol num penhasco ao amanhecer, pintura a óleo, névoa baixa"></textarea>
+        <div class="count"><span id="count">0</span>/500</div>
+
+        <fieldset class="sizes">
+          <legend class="field">Formato</legend>
+          <label class="chip"><input type="radio" name="size" value="768x768" checked /><span>Quadrado</span></label>
+          <label class="chip"><input type="radio" name="size" value="640x896" /><span>Retrato</span></label>
+          <label class="chip"><input type="radio" name="size" value="896x640" /><span>Paisagem</span></label>
+        </fieldset>
+
+        <button id="go" class="go" type="button">Gerar imagem</button>
+        <p id="error" class="error" role="alert" hidden></p>
+      </section>
+
+      <section class="stage" aria-live="polite">
+        <div id="frame" class="frame" style="aspect-ratio: 1 / 1">
+          <p id="empty" class="empty">Sua imagem aparece aqui.</p>
+          <div id="loading" class="loading" hidden>
+            <div class="bar"></div>
+            <p>Gerando… <span id="timer">0</span>s</p>
+          </div>
+          <img id="result" alt="" hidden />
+        </div>
+        <div id="actions" class="actions" hidden>
+          <a id="download" class="ghost" download="imagem-ia.png">Baixar</a>
+          <button id="again" class="ghost" type="button">Nova variação</button>
+        </div>
+      </section>
+    </div>
+
+    <section id="historyBox" class="history" hidden>
+      <h2>Últimas imagens</h2>
+      <div id="history" class="strip"></div>
+    </section>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>
