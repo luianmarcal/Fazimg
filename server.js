@@ -4,7 +4,9 @@ const path = require("path");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Opcional: com HF_TOKEN usa o Hugging Face; sem ele, usa o Pollinations (sem chave).
+// Prioridade: Cloudflare (CF_ACCOUNT_ID + CF_API_TOKEN) > Hugging Face (HF_TOKEN) > Pollinations (sem chave).
+const CF_ACCOUNT_ID = process.env.CF_ACCOUNT_ID || "";
+const CF_API_TOKEN = process.env.CF_API_TOKEN || "";
 const HF_TOKEN = process.env.HF_TOKEN || "";
 const HF_MODEL = process.env.HF_MODEL || "black-forest-labs/FLUX.1-schnell";
 
@@ -52,6 +54,33 @@ async function fetchWithTimeout(url, options = {}) {
   }
 }
 
+async function generateWithCloudflare({ prompt, seed }) {
+  const url = `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/ai/run/@cf/black-forest-labs/flux-1-schnell`;
+  const r = await fetchWithTimeout(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${CF_API_TOKEN}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ prompt: prompt.slice(0, 2048), steps: 4, seed }),
+  });
+  let data = null;
+  try {
+    data = await r.json();
+  } catch (_) {}
+  if (!r.ok || !data || data.success === false) {
+    const msg =
+      (data && Array.isArray(data.errors) && data.errors.map((e) => e.message).join("; ")) ||
+      `Cloudflare respondeu ${r.status}`;
+    const err = new Error(msg);
+    err.status = r.status;
+    throw err;
+  }
+  const b64 = (data.result && data.result.image) || data.image;
+  if (!b64) throw new Error("A Cloudflare não devolveu imagem.");
+  return `data:image/jpeg;base64,${b64}`;
+}
+
 async function generateWithHuggingFace({ prompt, width, height, seed }) {
   // A biblioteca oficial escolhe sozinha o provedor que atende o modelo.
   const { InferenceClient } = await import("@huggingface/inference");
@@ -84,8 +113,15 @@ async function generateWithPollinations({ prompt, width, height, seed }) {
   return `data:${type};base64,${buf.toString("base64")}`;
 }
 
+function currentProvider() {
+  if (CF_ACCOUNT_ID && CF_API_TOKEN) return "cloudflare";
+  if (HF_TOKEN) return "huggingface";
+  return "pollinations";
+}
+
 app.get("/api/status", (_req, res) => {
-  res.json({ provider: HF_TOKEN ? "huggingface" : "pollinations" });
+  const provider = currentProvider();
+  res.json({ provider, supportsSize: provider !== "cloudflare" });
 });
 
 app.post("/api/generate", rateLimit, async (req, res) => {
@@ -103,9 +139,13 @@ app.post("/api/generate", rateLimit, async (req, res) => {
   const seed = Number.isFinite(seedIn) ? seedIn : Math.floor(Math.random() * 1e9);
 
   try {
-    const image = HF_TOKEN
-      ? await generateWithHuggingFace({ prompt, width, height, seed })
-      : await generateWithPollinations({ prompt, width, height, seed });
+    const provider = currentProvider();
+    const image =
+      provider === "cloudflare"
+        ? await generateWithCloudflare({ prompt, seed })
+        : provider === "huggingface"
+        ? await generateWithHuggingFace({ prompt, width, height, seed })
+        : await generateWithPollinations({ prompt, width, height, seed });
     res.json({ image, seed });
   } catch (e) {
     console.error("Erro ao gerar:", e.message);
@@ -119,10 +159,14 @@ app.post("/api/generate", rateLimit, async (req, res) => {
         .status(503)
         .json({ error: "O modelo está carregando. Tente de novo em alguns segundos." });
     }
-    if (e.status === 429 || e.status === 402) {
+    if (
+      e.status === 429 ||
+      e.status === 402 ||
+      /depleted|daily free allocation|neurons|quota|credits/i.test(e.message)
+    ) {
       return res
         .status(429)
-        .json({ error: "A cota gratuita do serviço acabou por agora. Tente mais tarde." });
+        .json({ error: "A cota gratuita acabou por agora. Ela renova sozinha (no Cloudflare, todo dia). Tente mais tarde." });
     }
     res.status(502).json({ error: "Não foi possível gerar a imagem agora.", detail: e.message });
   }

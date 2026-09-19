@@ -146,5 +146,17 @@
   goBtn.addEventListener("click", () => generate());
   againEl.addEventListener("click", () => generate(Math.floor(Math.random() * 1e9)));
 
+  // Alguns provedores (Cloudflare) só geram imagem quadrada: esconde a escolha de formato.
+  fetch("/api/status")
+    .then((r) => r.json())
+    .then((st) => {
+      if (st && st.supportsSize === false) {
+        document.querySelector('input[name="size"]').checked = true;
+        $("sizes").hidden = true;
+        updateFrameRatio();
+      }
+    })
+    .catch(() => {});
+
   renderHistory();
 })();
