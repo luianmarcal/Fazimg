@@ -7,6 +7,9 @@ const PORT = process.env.PORT || 3000;
 // Prioridade: Cloudflare (CF_ACCOUNT_ID + CF_API_TOKEN) > Hugging Face (HF_TOKEN) > Pollinations (sem chave).
 const CF_ACCOUNT_ID = process.env.CF_ACCOUNT_ID || "";
 const CF_API_TOKEN = process.env.CF_API_TOKEN || "";
+// Modelo da Cloudflare. Troque por "@cf/black-forest-labs/flux-1-schnell" para voltar ao antigo.
+const CF_MODEL = process.env.CF_MODEL || "@cf/black-forest-labs/flux-2-klein-4b";
+const CF_IS_FLUX2 = CF_MODEL.includes("flux-2");
 const HF_TOKEN = process.env.HF_TOKEN || "";
 const HF_MODEL = process.env.HF_MODEL || "black-forest-labs/FLUX.1-schnell";
 
@@ -54,16 +57,32 @@ async function fetchWithTimeout(url, options = {}) {
   }
 }
 
-async function generateWithCloudflare({ prompt }) {
-  const url = `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/ai/run/@cf/black-forest-labs/flux-1-schnell`;
-  const r = await fetchWithTimeout(url, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${CF_API_TOKEN}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ prompt: prompt.slice(0, 2048), steps: 4 }),
-  });
+async function generateWithCloudflare({ prompt, width, height, seed }) {
+  const url = `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/ai/run/${CF_MODEL}`;
+  const headers = { Authorization: `Bearer ${CF_API_TOKEN}` };
+  let body;
+
+  if (CF_IS_FLUX2) {
+    // A família FLUX.2 exige multipart/form-data, mesmo só com texto.
+    const form = new FormData();
+    form.append("prompt", prompt.slice(0, 2048));
+    form.append("width", String(width));
+    form.append("height", String(height));
+    form.append("seed", String(seed));
+    body = form;
+  } else {
+    headers["Content-Type"] = "application/json";
+    body = JSON.stringify({ prompt: prompt.slice(0, 2048), steps: 4 });
+  }
+
+  const r = await fetchWithTimeout(url, { method: "POST", headers, body });
+
+  const type = r.headers.get("content-type") || "";
+  if (r.ok && type.startsWith("image/")) {
+    const buf = Buffer.from(await r.arrayBuffer());
+    return `data:${type};base64,${buf.toString("base64")}`;
+  }
+
   let data = null;
   try {
     data = await r.json();
@@ -78,7 +97,7 @@ async function generateWithCloudflare({ prompt }) {
   }
   const b64 = (data.result && data.result.image) || data.image;
   if (!b64) throw new Error("A Cloudflare não devolveu imagem.");
-  return `data:image/jpeg;base64,${b64}`;
+  return `data:image/${CF_IS_FLUX2 ? "png" : "jpeg"};base64,${b64}`;
 }
 
 async function generateWithHuggingFace({ prompt, width, height, seed }) {
@@ -121,7 +140,7 @@ function currentProvider() {
 
 app.get("/api/status", (_req, res) => {
   const provider = currentProvider();
-  res.json({ provider, supportsSize: provider !== "cloudflare" });
+  res.json({ provider, supportsSize: provider !== "cloudflare" || CF_IS_FLUX2 });
 });
 
 app.post("/api/generate", rateLimit, async (req, res) => {
@@ -142,7 +161,7 @@ app.post("/api/generate", rateLimit, async (req, res) => {
     const provider = currentProvider();
     const image =
       provider === "cloudflare"
-        ? await generateWithCloudflare({ prompt })
+        ? await generateWithCloudflare({ prompt, width, height, seed })
         : provider === "huggingface"
         ? await generateWithHuggingFace({ prompt, width, height, seed })
         : await generateWithPollinations({ prompt, width, height, seed });

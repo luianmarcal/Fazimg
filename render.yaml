@@ -10,6 +10,8 @@ services:
         sync: false
       - key: CF_API_TOKEN
         sync: false
+      - key: CF_MODEL
+        value: "@cf/black-forest-labs/flux-2-klein-4b"
       - key: HF_TOKEN
         sync: false
       - key: HF_MODEL
