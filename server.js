@@ -17,7 +17,7 @@ const MAX_PROMPT = 500;
 const TIMEOUT_MS = 90_000;
 
 app.set("trust proxy", 1);
-app.use(express.json({ limit: "10kb" }));
+app.use(express.json({ limit: "3mb" }));
 app.use(express.static(path.join(__dirname, "public")));
 
 // Limite simples por IP para proteger a cota gratuita (6 pedidos por minuto).
@@ -57,7 +57,7 @@ async function fetchWithTimeout(url, options = {}) {
   }
 }
 
-async function generateWithCloudflare({ prompt, width, height, seed }) {
+async function generateWithCloudflare({ prompt, width, height, seed, refBlob }) {
   const url = `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/ai/run/${CF_MODEL}`;
   const headers = { Authorization: `Bearer ${CF_API_TOKEN}` };
   let body;
@@ -69,6 +69,7 @@ async function generateWithCloudflare({ prompt, width, height, seed }) {
     form.append("width", String(width));
     form.append("height", String(height));
     form.append("seed", String(seed));
+    if (refBlob) form.append("input_image_0", refBlob, "referencia.jpg");
     body = form;
   } else {
     headers["Content-Type"] = "application/json";
@@ -140,7 +141,11 @@ function currentProvider() {
 
 app.get("/api/status", (_req, res) => {
   const provider = currentProvider();
-  res.json({ provider, supportsSize: provider !== "cloudflare" || CF_IS_FLUX2 });
+  res.json({
+    provider,
+    supportsSize: provider !== "cloudflare" || CF_IS_FLUX2,
+    supportsImage: provider === "cloudflare" && CF_IS_FLUX2,
+  });
 });
 
 app.post("/api/generate", rateLimit, async (req, res) => {
@@ -157,11 +162,30 @@ app.post("/api/generate", rateLimit, async (req, res) => {
   const seedIn = parseInt(req.body?.seed, 10);
   const seed = Number.isFinite(seedIn) ? seedIn : Math.floor(Math.random() * 1e9);
 
+  // Imagem de referência (image-to-image): só na Cloudflare com FLUX.2.
+  let refBlob = null;
+  const imageIn = req.body?.image;
+  if (imageIn) {
+    if (!(currentProvider() === "cloudflare" && CF_IS_FLUX2)) {
+      return res
+        .status(400)
+        .json({ error: "Imagem de referência só funciona com o FLUX.2 na Cloudflare." });
+    }
+    const comma = typeof imageIn === "string" ? imageIn.indexOf(",") : -1;
+    const head = comma > 0 ? imageIn.slice(0, comma) : "";
+    const okHead = /^data:image\/(jpeg|png|webp);base64$/.test(head);
+    const buf = okHead ? Buffer.from(imageIn.slice(comma + 1), "base64") : null;
+    if (!buf || buf.length === 0 || buf.length > 1_500_000) {
+      return res.status(400).json({ error: "Imagem de referência inválida ou grande demais." });
+    }
+    refBlob = new Blob([buf], { type: head.slice(5, head.indexOf(";")) });
+  }
+
   try {
     const provider = currentProvider();
     const image =
       provider === "cloudflare"
-        ? await generateWithCloudflare({ prompt, width, height, seed })
+        ? await generateWithCloudflare({ prompt, width, height, seed, refBlob })
         : provider === "huggingface"
         ? await generateWithHuggingFace({ prompt, width, height, seed })
         : await generateWithPollinations({ prompt, width, height, seed });

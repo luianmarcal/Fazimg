@@ -17,7 +17,13 @@
 
   const HISTORY_KEY = "gerador-imagem-historico";
   const HISTORY_MAX = 6;
+  const refBox = $("refBox");
+  const refInput = $("refImage");
+  const refPreview = $("refPreview");
+  const refThumb = $("refThumb");
+  const refClear = $("refClear");
   let timerId = null;
+  let refData = null; // imagem de referência redimensionada (data URL)
 
   function selectedSize() {
     const value = document.querySelector('input[name="size"]:checked').value;
@@ -101,6 +107,49 @@
     });
   }
 
+  // A Cloudflare aceita imagens de referência de no máximo 512x512.
+  function resizeToDataURL(file) {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, 512 / Math.max(img.width, img.height));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(img.width * scale));
+        canvas.height = Math.max(1, Math.round(img.height * scale));
+        canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+        URL.revokeObjectURL(url);
+        resolve(canvas.toDataURL("image/jpeg", 0.92));
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error("Não foi possível ler essa imagem."));
+      };
+      img.src = url;
+    });
+  }
+
+  function clearRef() {
+    refData = null;
+    refInput.value = "";
+    refPreview.hidden = true;
+  }
+
+  refInput.addEventListener("change", async () => {
+    const file = refInput.files && refInput.files[0];
+    if (!file) return clearRef();
+    try {
+      refData = await resizeToDataURL(file);
+      refThumb.src = refData;
+      refPreview.hidden = false;
+      showError("");
+    } catch (e) {
+      clearRef();
+      showError(e.message);
+    }
+  });
+  refClear.addEventListener("click", clearRef);
+
   async function generate(seed) {
     const prompt = promptEl.value.trim();
     if (!prompt) {
@@ -117,7 +166,7 @@
       const r = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, width, height, seed }),
+        body: JSON.stringify({ prompt, width, height, seed, image: refData || undefined }),
       });
       const data = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error((data.error || "Não foi possível gerar a imagem.") + (data.detail ? " (" + data.detail + ")" : ""));
@@ -150,6 +199,7 @@
   fetch("/api/status")
     .then((r) => r.json())
     .then((st) => {
+      if (st && st.supportsImage) refBox.hidden = false;
       if (st && st.supportsSize === false) {
         document.querySelector('input[name="size"]').checked = true;
         $("sizes").hidden = true;

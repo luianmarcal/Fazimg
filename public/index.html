@@ -22,6 +22,16 @@
         <textarea id="prompt" maxlength="500" rows="6" placeholder="Um farol num penhasco ao amanhecer, pintura a óleo, névoa baixa"></textarea>
         <div class="count"><span id="count">0</span>/500</div>
 
+        <div id="refBox" class="refbox" hidden>
+          <label class="field" for="refImage">Imagem de referência (opcional)</label>
+          <input id="refImage" type="file" accept="image/*" />
+          <div id="refPreview" class="refpreview" hidden>
+            <img id="refThumb" alt="Imagem de referência escolhida" />
+            <button id="refClear" class="ghost" type="button">Remover</button>
+          </div>
+          <p class="hint">Com uma imagem, a descrição diz o que mudar. Exemplo: "make the car red".</p>
+        </div>
+
         <fieldset id="sizes" class="sizes">
           <legend class="field">Formato</legend>
           <label class="chip"><input type="radio" name="size" value="768x768" checked /><span>Quadrado</span></label>

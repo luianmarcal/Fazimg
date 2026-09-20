@@ -96,6 +96,12 @@ textarea:focus-visible,
   margin: 4px 0 16px;
 }
 
+.refbox { margin: 0 0 20px; }
+.refbox input[type="file"] { width: 100%; font: inherit; color: var(--muted); }
+.refpreview { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
+.refpreview img { height: 72px; width: auto; border: 2px solid var(--ink); border-radius: 2px; display: block; }
+.hint { font-size: 0.85rem; color: var(--muted); margin: 8px 0 0; }
+
 .sizes { border: 0; padding: 0; margin: 0 0 20px; display: flex; flex-wrap: wrap; gap: 8px; }
 .sizes .field { width: 100%; }
 
