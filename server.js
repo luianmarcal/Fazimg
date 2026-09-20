@@ -54,7 +54,7 @@ async function fetchWithTimeout(url, options = {}) {
   }
 }
 
-async function generateWithCloudflare({ prompt, seed }) {
+async function generateWithCloudflare({ prompt }) {
   const url = `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/ai/run/@cf/black-forest-labs/flux-1-schnell`;
   const r = await fetchWithTimeout(url, {
     method: "POST",
@@ -62,7 +62,7 @@ async function generateWithCloudflare({ prompt, seed }) {
       Authorization: `Bearer ${CF_API_TOKEN}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ prompt: prompt.slice(0, 2048), steps: 4, seed }),
+    body: JSON.stringify({ prompt: prompt.slice(0, 2048), steps: 4 }),
   });
   let data = null;
   try {
@@ -142,7 +142,7 @@ app.post("/api/generate", rateLimit, async (req, res) => {
     const provider = currentProvider();
     const image =
       provider === "cloudflare"
-        ? await generateWithCloudflare({ prompt, seed })
+        ? await generateWithCloudflare({ prompt })
         : provider === "huggingface"
         ? await generateWithHuggingFace({ prompt, width, height, seed })
         : await generateWithPollinations({ prompt, width, height, seed });
